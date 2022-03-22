@@ -1,14 +1,19 @@
 import os
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from selenium.webdriver.edge.options import Options as EdgeOptions
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+
 from dotenv import load_dotenv
-from zoneinfo import ZoneInfo
-from datetime import datetime
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, \
+    ElementNotInteractableException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.edge.service import Service
+from selenium.webdriver.remote.webdriver import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+
+from utilities import get_available_slot
 
 debug = True
 load_dotenv()
@@ -23,17 +28,22 @@ sign_in_button = driver.find_element(By.XPATH, '//*[@id="pc_HomeHelp"]/b')
 
 sign_in_button.click()
 
-##TODO:Add Wait
-username = driver.find_element(By.XPATH, '//*[@id="username"]')
-password = driver.find_element(By.XPATH, '//*[@id="password"]')
+username = WebDriverWait(driver, 5).until(
+    EC.presence_of_element_located((By.XPATH, '//*[@id="username"]')))
+password = WebDriverWait(driver, 5).until(
+    EC.presence_of_element_located((By.XPATH, '//*[@id="password"]')))
 
 if debug:
-    username.send_keys(os.environ('USERNAME'))
-    password.send_keys(os.environ('PASSWORD'))
-
-##TODO:Ask username and password
+    username.send_keys(os.environ['USERNAME'])
+    password.send_keys(os.environ['PASSWORD'])
+    predefined_range = [os.environ['START_PREFERENCE'], os.environ['END_PREFERENCE']]
+    contact_name = os.environ['CONTACT_NAME']
+    phone_number = os.environ['CONTACT_NUMBER']
+    email_address = os.environ['CONTACT_EMAIL']
+# TODO:  Add ArgParse
 else:
-    pass
+    username = input('Please provide your username\n')
+    password = input('Please provide your password\n')
 
 login_button = driver.find_element(By.XPATH, '/html/body/div/div[1]/div/div[1]/form/div[3]/button[1]')
 login_button.click()
@@ -46,22 +56,94 @@ create_reservation_button.click()
 rec_court_book_now_button = driver.find_element(By.XPATH, '//*[@id="templates-grid"]/div/div[16]/div[2]/button[1]')
 rec_court_book_now_button.click()
 
-##TODO: Learn XPath
-##TODO: Possible place that code might break
-##TODO: Where are the funcking try/catches
-## Time 6:00 AM to 11:30 PM
+def get_time_ranges(events):
+    reserved_time_ranges = []
 
+    for event in events:
+        try:
+            driver.execute_script("arguments[0].click();", event)
+            close_button: WebElement = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, '//*[@id="booking-details-modal"]/div[1]/div/div[1]/button')))
+
+            reserved_time: WebElement = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.XPATH, '//*[@id="detailsContainer"]/table/tbody/tr/td[contains('
+                                                          'string(),"Reserved Time")]/following-sibling::td')))
+            reserved_time: str = reserved_time.text
+            reserved_time: list[str] = reserved_time.split(' - ')
+            reserved_time_ranges.append(reserved_time)
+            close_button.click()
+            WebDriverWait(driver, 10).until(
+                EC.invisibility_of_element_located((By.XPATH, '//*[@id="booking-details-modal"]')))
+            # TODO: Incorrect Usage
+            # time.sleep(2)
+        except TimeoutException as exception:
+            print(exception.msg)
+        except ElementClickInterceptedException as exception:
+            print(exception.msg)
+        except ElementNotInteractableException as exception:
+            print(exception.msg)
+    return reserved_time_ranges
+
+
+def book_room(available_slot_inside, start_time_element_inside, end_time_element_inside, index, phone_number_inside,
+              email_address_inside,
+              contact_name_inside):
+    # WebDriverWait(driver, 5).until(
+    #     EC.presence_of_element_located((By.XPATH, '//*[@id="booking-start"]/input')))
+
+    start_time_element_inside.clear()
+    start_time_element_inside.send_keys(available_slot_inside['start_time'])
+    end_time_element_inside.clear()
+    end_time_element_inside.send_keys(available_slot_inside['end_time'])
+    search_button_inside = driver.find_element(By.XPATH, '//*[@id="location-filter-container"]/div[2]/button')
+    driver.execute_script("arguments[0].click();", search_button_inside)
+    book_button = driver.find_element(By.XPATH,
+                                      f'//*[@id="book-grid-container"]/div[2]/div/div[1]/div/div[contains(string(),'
+                                      f'"Badminton_Pickleball {index + 1}")][1]/a[1]')
+    book_button.click()
+    # TODO: Check for Popups
+    next_step_button = WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="next-step-btn"]')))
+    next_step_button.click()
+
+    contact_name_field: WebElement = WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="1stContactName"]')))
+    contact_name_field.send_keys(contact_name_inside)
+
+    contact_phone_field: WebElement = WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="1stContactPhone1"]')))
+    contact_phone_field.send_keys(phone_number_inside)
+
+    contact_email_field: WebElement = WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="1stContactEmail"]')))
+    contact_email_field.send_keys(email_address_inside)
+
+    additional_info_1 = Select(WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '// *[ @ id = "165"]'))))
+    additional_info_1.select_by_value('471')
+    additional_info_2 = Select(WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="164"]'))))
+    additional_info_2.select_by_value('470')
+
+    reserve_button: WebElement = WebDriverWait(driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, '//*[@id="details"]/div[3]/div/span[2]/button')))
+    reserve_button.click()
+
+    return
+
+
+# TODO:Learn XPath
+# TODO:Possible place that code might break
+# TODO:Where are the fucking try/catches
+# TODO:Time 6:00 AM to 11:30 PM
 # current_date_time = datetime.now(tz=ZoneInfo('America/Denver'))
 # current_date = current_date_time.date()
+# TODO: Hard-Coding Max
+# TODO: date_input.clear()
+# TODO:date_input.send_keys(current_date.strftime('%a %m/%d/%Y'))
 
-
-date_input = driver.find_element(By.XPATH, '//*[@id="booking-date-input"]')
-# date_input.clear()
-# date_input.send_keys(current_date.strftime('%a %m/%d/%Y'))
-
-date_value = date_input.get_property('value')
-start_time = driver.find_element(By.XPATH, '//*[@id="booking-start"]/input')
-end_time = driver.find_element(By.XPATH, '//*[@id="booking-end"]/input')
+date_input = WebDriverWait(driver, 5).until(
+    EC.presence_of_element_located((By.XPATH, '//*[@id="booking-date-input"]')))
 
 search_button = driver.find_element(By.XPATH, '//*[@id="location-filter-container"]/div[2]/button')
 search_button.click()
@@ -75,33 +157,24 @@ room_2875_element = driver.find_element(By.XPATH, '//*[@id="book-grid-container"
 room_2884_events = room_2884_element.find_elements(By.CLASS_NAME, 'event-container')
 room_2875_events = room_2875_element.find_elements(By.CLASS_NAME, 'event-container')
 
-
-def get_time_ranges(events):
-    time_ranges = set()
-
-    for event in events:
-        event.click()
-        close_button = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.XPATH, '//*[@id="booking-details-modal"]/div[1]/div/div[1]/button')))
-        close_button.click()
-
-    return
-
-
 room_2884_reserved_time_ranges = get_time_ranges(room_2884_events)
-
 room_2875_reserved_time_ranges = get_time_ranges(room_2875_events)
 
-# badminton_room_elements = {
-#     2884 : None,
-#     2875: None
-# }
+rooms = [room_2884_reserved_time_ranges, room_2875_reserved_time_ranges]
 
-# //*[@id="book-grid-container"]/div[2]/div/div[2]/div[5]
+date_value = date_input.get_property('value')
+start_time_element = driver.find_element(By.XPATH, '//*[@id="booking-start"]/input')
+end_time_element = driver.find_element(By.XPATH, '//*[@id="booking-end"]/input')
 
+curr_time = start_time_element.get_property('value')
 
-# list_button = driver.find_element(By.XPATH,'//*[@id="result-tabs"]/li[1]/a')
-# list_button.click()
-# driver.quit()
-
-# table = driver.find_element(By.XPATH,'//*[@id="available-list"]')
+for i in range(len(rooms)):
+    available_slots = get_available_slot(rooms[i], predefined_range[:], curr_time)
+    if len(available_slots) > 0:
+        book_room(available_slots[0], start_time_element, end_time_element, i, phone_number, email_address,
+                  contact_name)
+        driver.quit()
+        break
+else:
+    print('No available slots to book')
+    driver.quit()
