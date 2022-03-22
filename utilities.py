@@ -50,6 +50,7 @@ def get_available_slot(reserved_time_ranges, predefined_range, curr_time, first_
     for i in range(len(reserved_time_ranges)):
         for j in range(len(reserved_time_ranges[i])):
             reserved_time_ranges[i][j] = convert_to_datetime(reserved_time_ranges[i][j])
+    reserved_time_ranges = sorted(reserved_time_ranges,key=lambda time_range:time_range[0])
     curr_time = convert_to_datetime(curr_time)
     predefined_range[0] = convert_to_datetime(predefined_range[0])
     predefined_range[1] = convert_to_datetime(predefined_range[1])
@@ -74,7 +75,7 @@ def get_available_slot(reserved_time_ranges, predefined_range, curr_time, first_
 
         available_slots = []
         prev_end_time = reserved_time_ranges[0][1]
-        # print_reserved_time_ranges(reserved_time_ranges)
+        print_reserved_time_ranges(reserved_time_ranges)
         for i in range(1, len(reserved_time_ranges)):
             curr_start_time = reserved_time_ranges[i][0]
             time_diff = curr_start_time - prev_end_time
